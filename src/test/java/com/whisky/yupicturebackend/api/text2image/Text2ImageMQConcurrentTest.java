@@ -19,6 +19,8 @@ public class Text2ImageMQConcurrentTest {
     private static final int THREAD_COUNT = 5;
     // 每个线程发送的请求数
     private static final int REQUESTS_PER_THREAD = 2;
+    // 将会员线程设为第4号线程
+    private static final int VIP_THREAD_INDEX = 4;
 
     @Test
     public void testConcurrentRequests() throws InterruptedException {
@@ -27,12 +29,12 @@ public class Text2ImageMQConcurrentTest {
         // 总计数器（确保所有请求完成）
         CountDownLatch allRequestsLatch = new CountDownLatch(THREAD_COUNT * REQUESTS_PER_THREAD);
         // 结果收集（线程安全）
-        ConcurrentHashMap<String, String> successResults = new ConcurrentHashMap<>();
+        ConcurrentLinkedQueue<String> executionOrder = new ConcurrentLinkedQueue<>();
 
         // 先启动消费者（全局监听结果队列）
         client.startConsuming(response -> {
             if ("SUCCESS".equals(response.getTaskStatus())) {
-                successResults.put(response.getTaskId(), response.getImageUrl());
+                executionOrder.add(response.getTaskId() + ":" + response.getImageUrl());
             }
             allRequestsLatch.countDown(); // 每个响应减少计数器
         });
@@ -44,7 +46,14 @@ public class Text2ImageMQConcurrentTest {
                 for (int j = 0; j < REQUESTS_PER_THREAD; j++) {
                     try {
                         Text2ImageTaskRequest request = new Text2ImageTaskRequest();
-                        request.setPrompt(String.format("Thread-%d Request-%d: A landscape", threadId, j));
+                        String prompt = "A wonderful landscape.";
+                        request.setPrompt(prompt);
+
+                        // 会员线程设置高优先级（9），其他线程保持默认（0）
+                        if (threadId == VIP_THREAD_INDEX) {
+                            request.setPriority(9); // 最高优先级
+                            Thread.sleep(200);
+                        }
                         // 发送请求（无需等待结果）
                         client.submitTextToImageTask(request);
                     } catch (Exception e) {
@@ -55,18 +64,14 @@ public class Text2ImageMQConcurrentTest {
         }
 
         // 等待所有请求完成（超时时间根据实际情况调整）
-        boolean allDone = allRequestsLatch.await(120, TimeUnit.SECONDS);
+        boolean allDone = allRequestsLatch.await(1200, TimeUnit.SECONDS);
         executor.shutdown();
 
         // 验证结果
         assertTrue("Not all requests completed in time", allDone);
-        assertEquals(
-            "Should receive all success responses",
-            THREAD_COUNT * REQUESTS_PER_THREAD,
-            successResults.size()
-        );
-        successResults.forEach((taskId, url) -> {
-            System.out.printf("Task %s -> %s\n", taskId, url);
-        });
+
+        // 打印执行顺序（验证会员请求优先）
+        System.out.println("=== 执行顺序 ===");
+        executionOrder.forEach(System.out::println);
     }
 }

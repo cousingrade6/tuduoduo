@@ -19,6 +19,8 @@ import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 @Slf4j
@@ -40,7 +42,17 @@ public class SDXLRabbitMQClientRabbitTemplate {
         this.objectMapper = objectMapper;
         // 初始化时声明队列（确保存在）
         rabbitTemplate.execute(channel -> {
-            channel.queueDeclare(taskQueueName, true, false, false, null);
+            // 任务队列（支持优先级）
+            Map<String, Object> taskQueueArgs = new HashMap<>();
+            taskQueueArgs.put("x-max-priority", 9); // 设置优先级范围为0-9
+
+            channel.queueDeclare(
+                    taskQueueName,
+                    true,    // durable: 持久化
+                    false,      // exclusive: 非独占
+                    false,      // autoDelete: 不自动删除
+                    taskQueueArgs  // 携带优先级参数
+            );
             channel.queueDeclare(resultQueueName, true, false, false, null);
             return null;
         });

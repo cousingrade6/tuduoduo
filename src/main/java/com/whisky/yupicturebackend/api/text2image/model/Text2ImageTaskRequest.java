@@ -18,6 +18,7 @@ public class Text2ImageTaskRequest extends RabbitMQMessage {
     private String taskId = UUID.randomUUID().toString();
     private String prompt;
     private String negativePrompt;
+    private int priority = 0; // 默认优先级0（普通用户），会员设为更高
 
     /**
      * 推理步数
