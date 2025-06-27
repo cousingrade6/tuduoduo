@@ -6,37 +6,45 @@ import org.springframework.boot.test.context.SpringBootTest;
 
 import javax.annotation.Resource;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+
+import static org.springframework.test.util.AssertionErrors.assertNotNull;
+import static org.springframework.test.util.AssertionErrors.assertTrue;
+
 @SpringBootTest
 public class Text2ImageMQTemplate {
     @Resource
     SDXLRabbitMQClientRabbitTemplate client;
 
     @Test
-    public void test() {
-        try {
-            Text2ImageTaskRequest request = new Text2ImageTaskRequest();
-            request.setPrompt("A beautiful landscape");
+    public void test() throws InterruptedException {
+        CountDownLatch latch = new CountDownLatch(1);
+        AtomicReference<String> imageUrl = new AtomicReference<>();
 
-            String taskId = client.submitTextToImageTask(request);
-            System.out.println("Task ID: " + taskId);
+        Text2ImageTaskRequest request = new Text2ImageTaskRequest();
+        request.setPrompt("A beautiful sunset over mountains");
 
-            client.startConsuming(response -> {
-                System.out.println("Received update at " + response.getTimestamp());
-                System.out.println("Status: " + response.getTaskStatus());
+        client.startConsuming(response -> {
+            System.out.println("Status update: " + response.getTaskStatus());
 
-                if ("SUCCESS".equals(response.getTaskStatus())) {
-                    System.out.println("Image URL: " + response.getImageUrl());
-                    try {
-                        client.close();
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                }
-            });
+            if ("SUCCESS".equals(response.getTaskStatus())) {
+                imageUrl.set(response.getImageUrl());
+                latch.countDown();
+            } else if ("FAILED".equals(response.getTaskStatus())) {
+                latch.countDown();
+            }
+        });
 
-            Thread.sleep(60000); // 等待1分钟
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        String taskId = client.submitTextToImageTask(request);
+
+        // 等待最多60秒
+        boolean completed = latch.await(60, TimeUnit.SECONDS);
+
+        assertTrue("Task did not complete in time", completed);
+        assertNotNull("Image URL should not be null", imageUrl.get());
+
+        System.out.println("Generated image URL: " + imageUrl.get());
     }
 }
