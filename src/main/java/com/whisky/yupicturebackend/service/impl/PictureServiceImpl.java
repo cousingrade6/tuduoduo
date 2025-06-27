@@ -13,6 +13,9 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.whisky.yupicturebackend.api.aliyunai.AliYunAiApi;
 import com.whisky.yupicturebackend.api.aliyunai.model.CreateOutPaintingTaskRequest;
 import com.whisky.yupicturebackend.api.aliyunai.model.CreateOutPaintingTaskResponse;
+import com.whisky.yupicturebackend.api.text2image.RabbitMQProducer;
+import com.whisky.yupicturebackend.api.text2image.model.TaskResponse;
+import com.whisky.yupicturebackend.api.text2image.model.Text2ImageTaskRequest;
 import com.whisky.yupicturebackend.exception.BusinessException;
 import com.whisky.yupicturebackend.exception.ErrorCode;
 import com.whisky.yupicturebackend.exception.ThrowUtils;
@@ -49,8 +52,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 import javax.servlet.http.HttpServletRequest;
 import java.awt.*;
 import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
@@ -71,6 +76,11 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
     private final CosManager cosManager;
     private final StringRedisTemplate stringRedisTemplate;
     private final AliYunAiApi aliYunAiApi;
+    @Autowired
+    private RabbitMQProducer mqProducer;
+
+    // 本地缓存结果（生产环境改用Redis）
+    private final Map<String, TaskResponse> resultCache = new ConcurrentHashMap<>();
 
     @Autowired
     public PictureServiceImpl(
@@ -493,8 +503,40 @@ public class PictureServiceImpl extends ServiceImpl<PictureMapper, Picture>
         return aliYunAiApi.createOutPaintingTask(createOutPaintingTaskRequest);
     }
 
-    // 搜图功能
+    @Override
+    public String submitGenerationTask(Text2ImageTaskRequest request) {
+        String taskId = UUID.randomUUID().toString();
+        request.setTaskId(taskId); // 注入taskId
 
+        // 初始状态记录
+        TaskResponse initialResponse = new TaskResponse();
+        initialResponse.setTaskId(taskId);
+        initialResponse.setTaskStatus("PROCESSING");
+        initialResponse.setTimestamp(LocalDateTime.now());
+        resultCache.put(taskId, initialResponse);
+
+        // 发送MQ消息
+        mqProducer.sendImageTask(request);
+        return taskId;
+    }
+
+    @Override
+    public TaskResponse getTaskResult(String taskId) {
+        TaskResponse notFoundResponse = new TaskResponse();
+        notFoundResponse.setTaskId(taskId);
+        notFoundResponse.setError("NOT_FOUND");
+
+        return resultCache.getOrDefault(taskId, notFoundResponse);
+    }
+
+    // 供Listener调用的更新方法
+    @Override
+    public void updateTaskResult(TaskResponse response) {
+        resultCache.put(response.getTaskId(), response);
+    }
+
+
+    // 搜图功能
     /**
      * 按照颜色搜图
      * @param spaceId

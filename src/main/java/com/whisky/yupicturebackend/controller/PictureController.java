@@ -9,6 +9,8 @@ import com.whisky.yupicturebackend.api.aliyunai.model.CreateOutPaintingTaskRespo
 import com.whisky.yupicturebackend.api.aliyunai.model.GetOutPaintingTaskResponse;
 import com.whisky.yupicturebackend.api.imagesearch.ImageSearchApiFacade;
 import com.whisky.yupicturebackend.api.imagesearch.model.ImageSearchResult;
+import com.whisky.yupicturebackend.api.text2image.model.TaskResponse;
+import com.whisky.yupicturebackend.api.text2image.model.Text2ImageTaskRequest;
 import com.whisky.yupicturebackend.common.BaseResponse;
 import com.whisky.yupicturebackend.common.DeleteRequest;
 import com.whisky.yupicturebackend.common.ResultUtils;
@@ -34,13 +36,16 @@ import com.whisky.yupicturebackend.service.SpaceService;
 import com.whisky.yupicturebackend.service.UserService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @RestController
@@ -427,6 +432,27 @@ public class PictureController {
         ThrowUtils.throwIf(StrUtil.isBlank(taskId), ErrorCode.PARAMS_ERROR);
         GetOutPaintingTaskResponse task = aliYunAiApi.getOutPaintingTask(taskId);
         return ResultUtils.success(task);
+    }
+
+    @PostMapping("/generate/create_task")
+    public BaseResponse<String> generateImage(
+            @RequestBody Text2ImageTaskRequest text2ImageTaskRequest, HttpServletRequest request
+            ) {
+
+        // VIP用户自动提升优先级
+        User loginUser = userService.getLoginUser(request);
+        if (loginUser.getUserRole().equals("vip")) {
+            text2ImageTaskRequest.setPriority(9);
+        }
+
+        String taskId = pictureService.submitGenerationTask(text2ImageTaskRequest);
+        return ResultUtils.success(taskId);
+    }
+
+    @GetMapping("/generate/get_task")
+    public ResponseEntity<TaskResponse> getResult(String taskId) {
+        TaskResponse response = pictureService.getTaskResult(taskId);
+        return ResponseEntity.ok(response);
     }
 
 }

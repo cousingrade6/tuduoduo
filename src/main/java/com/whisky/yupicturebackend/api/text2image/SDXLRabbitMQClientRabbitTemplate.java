@@ -32,7 +32,6 @@ public class SDXLRabbitMQClientRabbitTemplate {
     // 配置参数
     private final String taskQueueName = "image_generation_tasks";
     private final String resultQueueName = "image_generation_results";
-//    private String consumerQueueName;
 
     private SimpleMessageListenerContainer listenerContainer;
 
@@ -65,7 +64,7 @@ public class SDXLRabbitMQClientRabbitTemplate {
         String correlationId = UUID.randomUUID().toString();
         request.setTaskId(correlationId); // 将correlationId作为taskId传递
         // 发布任务消息
-        rabbitTemplate.convertAndSend(taskQueueName, (Object) request, message -> {
+        rabbitTemplate.convertAndSend(taskQueueName, request, message -> {
             message.getMessageProperties().setDeliveryMode(MessageDeliveryMode.PERSISTENT);
             message.getMessageProperties().setContentType("application/json");
             message.getMessageProperties().setCorrelationId(correlationId); // 任务id
@@ -83,12 +82,16 @@ public class SDXLRabbitMQClientRabbitTemplate {
         container.setQueueNames(resultQueueName);
         container.setMessageListener((ChannelAwareMessageListener) (message, channel) -> {
             try {
+                // 1. 反序列化消息体为TaskResponse对象
                 TaskResponse response = objectMapper.readValue(message.getBody(), TaskResponse.class);
+                // 2. 从消息属性获取RabbitMQ的correlationId
                 String receivedCorrelationId = message.getMessageProperties().getCorrelationId();
+                // 3. 从响应体获取业务层的taskId（发送请求时二者值相同）
                 String expectedCorrelationId = response.getTaskId(); // 原taskId现在作为correlationId
 
                 // 仅处理与自己请求匹配的响应
                 if (expectedCorrelationId.equals(receivedCorrelationId)) {
+                    // 4. 匹配成功时调用业务处理器
                     handler.handle(response);
                 }
             } catch (Exception e) {

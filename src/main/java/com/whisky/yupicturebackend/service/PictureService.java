@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.whisky.yupicturebackend.api.aliyunai.model.CreateOutPaintingTaskResponse;
+import com.whisky.yupicturebackend.api.text2image.model.TaskResponse;
+import com.whisky.yupicturebackend.api.text2image.model.Text2ImageTaskRequest;
 import com.whisky.yupicturebackend.model.dto.picture.*;
 import com.whisky.yupicturebackend.model.entity.Picture;
 import com.whisky.yupicturebackend.model.entity.User;
@@ -40,6 +42,12 @@ public interface PictureService extends IService<Picture> {
     void editPictureByBatch(PictureEditByBatchRequest pictureEditByBatchRequest, User loginUser);
 
     CreateOutPaintingTaskResponse createPictureOutPaintingTask(CreatePictureOutPaintingTaskRequest createPictureOutPaintingTaskRequest, User loginUser);
+
+    String submitGenerationTask(Text2ImageTaskRequest request);
+
+    TaskResponse getTaskResult(String taskId);
+
+    void updateTaskResult(TaskResponse response);
 
     // 搜图功能
     List<PictureVO> searchPictureByColor(Long spaceId, String picColor, User loginUser);
